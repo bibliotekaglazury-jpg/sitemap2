@@ -3,63 +3,65 @@ import re
 import html
 import time
 
-URL = "https://www.iglazura24.pl/console/integration/execute/name/GoogleSitemap"
+# ИСПОЛЬЗУЕМ ТЕХНИЧЕСКИЙ АДРЕС, ЧТОБЫ МЕНЬШЕ БЕСИТЬ ШОППЕР
+URL = "https://sklep621938.shoparena.pl/console/integration/execute/name/GoogleSitemap"
 LIMIT = 45000
 
-def super_clean_xml(text):
-    # 1. Удаляем мусорные теги Shoper (имена категорий внутри URL и т.д.)
+def clean_xml(text):
     text = re.sub(r'(?i)<(name|parentid|productscount)>.*?</\1>', '', text)
-    
-    # 2. Двойное декодирование (на случай, если Shoper закодировал middot дважды)
     text = html.unescape(html.unescape(text))
-    
-    # 3. ТОТАЛЬНАЯ ЗАМЕНА: XML понимает только 5 сущностей. 
-    # Все остальное (&middot;, &nbsp; и т.д.) мы превращаем в обычные символы.
-    # Этот Regex находит ЛЮБОЕ &...; и превращает в символ, если это не стандарт XML
-    def fix_entity(match):
-        entity = match.group(0)
-        if entity.lower() in ['&amp;', '&lt;', '&gt;', '&quot;', '&apos;']:
-            return entity
-        return html.unescape(entity)
-
-    text = re.sub(r'&[a-zA-Z0-9#]+;', fix_entity, text)
-
-    # 4. ФИНАЛЬНЫЙ ФИЛЬТР: заменяем голые & на правильные &amp;
-    # Но не трогаем те, что уже исправлены
+    text = text.replace('&middot;', '·').replace('&nbsp;', ' ')
     text = text.replace('&', '&amp;').replace('&amp;amp;', '&amp;')
-    
-    # 5. УДАЛЯЕМ ВСЁ НЕВАЛИДНОЕ: оставляем только разрешенные символы
     text = "".join(ch for ch in text if ord(ch) >= 32 or ch in "\n\r\t")
-    
     return text
 
 def main():
-    print("--- ЗАПУСК СТЕРИЛИЗАЦИИ XML ---")
+    print("--- ЗАПУСК СТЕРИЛИЗАЦИИ XML V2 ---")
     scraper = requests.Session()
-    r = scraper.get(URL, impersonate="chrome120", verify=False, timeout=60)
-    sub_maps = re.findall(r'(?i)<loc>(.*?)</loc>', r.text)
     
-    all_urls = []
-    for sub_url in sub_maps:
-        sub_url = sub_url.strip()
-        if any(x in sub_url.lower() for x in ['products', 'categories', 'news', 'info']):
-            print(f"Обработка: {sub_url}")
-            res = scraper.get(sub_url, impersonate="chrome120", verify=False, timeout=90)
-            if res.status_code == 200:
-                # Очищаем контент каждой под-карты
-                cleaned = super_clean_xml(res.text)
-                urls = re.findall(r'(?i)<url\b[^>]*>.*?</url>', cleaned, re.DOTALL)
-                all_urls.extend(urls)
+    try:
+        print(f"Запрашиваю индекс: {URL}")
+        r = scraper.get(URL, impersonate="chrome120", verify=False, timeout=60)
+        print(f"Статус индекса: {r.status_code}")
+        
+        sub_maps = re.findall(r'(?i)<loc>(.*?)</loc>', r.text)
+        print(f"Найдено под-карт: {len(sub_maps)}")
 
-    # Сохраняем результат
-    for i in range(0, len(all_urls), LIMIT):
-        chunk = all_urls[i:i + LIMIT]
-        part = (i // LIMIT) + 1
-        header = '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">'
-        filename = f"sitemap_part{part}.xml"
-        with open(filename, "w", encoding="utf-8") as f:
-            f.write(header + "\n" + "\n".join(chunk) + "\n</urlset>")
-        print(f"Создан чистый файл: {filename}")
+        if not sub_maps:
+            print("ОШИБКА: Список под-карт пуст. Шоппер выдал пустую страницу.")
+            print(f"Начало ответа: {r.text[:500]}")
+            return
+
+        all_urls = []
+        for index, sub_url in enumerate(sub_maps):
+            sub_url = sub_url.strip()
+            if any(x in sub_url.lower() for x in ['products', 'categories', 'news', 'info']):
+                print(f"[{index+1}/{len(sub_maps)}] Качаю: {sub_url}")
+                res = scraper.get(sub_url, impersonate="chrome120", verify=False, timeout=90)
+                if res.status_code == 200:
+                    cleaned = clean_xml(res.text)
+                    urls = re.findall(r'(?i)<url\b[^>]*>.*?</url>', cleaned, re.DOTALL)
+                    all_urls.extend(urls)
+                    print(f"  + {len(urls)} ссылок")
+                time.sleep(1) # Небольшая пауза, чтобы не злить сервер
+
+        print(f"\nИТОГО СОБРАНО: {len(all_urls)}")
+
+        if all_urls:
+            for i in range(0, len(all_urls), LIMIT):
+                chunk = all_urls[i:i + LIMIT]
+                part = (i // LIMIT) + 1
+                header = '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">'
+                # МЕНЯЕМ ИМЯ ФАЙЛА ДЛЯ УБИЙСТВА КЭША
+                filename = f"sitemap_new_part{part}.xml"
+                with open(filename, "w", encoding="utf-8") as f:
+                    f.write(header + "\n" + "\n".join(chunk) + "\n</urlset>")
+                print(f"СОЗДАН НОВЫЙ ФАЙЛ: {filename}")
+        else:
+            print("ОШИБКА: Ссылки не собраны.")
+
+    except Exception as e:
+        print(f"КРИТИЧЕСКИЙ СБОЙ: {e}")
 
 if __name__ == "__main__":
     main()
