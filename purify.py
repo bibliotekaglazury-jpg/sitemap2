@@ -6,35 +6,35 @@ import time
 URL = "https://www.iglazura24.pl/console/integration/execute/name/GoogleSitemap"
 LIMIT = 45000
 
-def clean_xml_content(text):
-    # 1. Вырезаем мусорные теги Shoper (самое важное)
+def super_clean_xml(text):
+    # 1. Удаляем мусорные теги Shoper (имена категорий внутри URL и т.д.)
     text = re.sub(r'(?i)<(name|parentid|productscount)>.*?</\1>', '', text)
     
-    # 2. Превращаем HTML-сущности в реальные символы
-    text = html.unescape(text)
+    # 2. Двойное декодирование (на случай, если Shoper закодировал middot дважды)
+    text = html.unescape(html.unescape(text))
     
-    # 3. ГРУБАЯ СИЛА: Удаляем middot и другие сущности, которые XML не ест
-    # XML понимает только 5 сущностей: &amp; &lt; &gt; &quot; &apos;
-    # Все остальные (&middot;, &nbsp; и т.д.) ДОЛЖНЫ быть заменены на символы
-    replacements = {
-        '&middot;': '·',
-        '&nbsp;': ' ',
-        '&copy;': '©',
-        '&reg;': '®',
-        '&ndash;': '-',
-        '&mdash;': '—'
-    }
-    for old, new in replacements.items():
-        text = text.replace(old, new)
-        
-    # 4. Финальный штрих: экранируем амперсанд (&), если он остался "голым"
-    # Но не трогаем уже правильные сущности
+    # 3. ТОТАЛЬНАЯ ЗАМЕНА: XML понимает только 5 сущностей. 
+    # Все остальное (&middot;, &nbsp; и т.д.) мы превращаем в обычные символы.
+    # Этот Regex находит ЛЮБОЕ &...; и превращает в символ, если это не стандарт XML
+    def fix_entity(match):
+        entity = match.group(0)
+        if entity.lower() in ['&amp;', '&lt;', '&gt;', '&quot;', '&apos;']:
+            return entity
+        return html.unescape(entity)
+
+    text = re.sub(r'&[a-zA-Z0-9#]+;', fix_entity, text)
+
+    # 4. ФИНАЛЬНЫЙ ФИЛЬТР: заменяем голые & на правильные &amp;
+    # Но не трогаем те, что уже исправлены
     text = text.replace('&', '&amp;').replace('&amp;amp;', '&amp;')
+    
+    # 5. УДАЛЯЕМ ВСЁ НЕВАЛИДНОЕ: оставляем только разрешенные символы
+    text = "".join(ch for ch in text if ord(ch) >= 32 or ch in "\n\r\t")
     
     return text
 
 def main():
-    print("--- ЗАПУСК ЖЕЛЕЗНОЙ ОЧИСТКИ XML ---")
+    print("--- ЗАПУСК СТЕРИЛИЗАЦИИ XML ---")
     scraper = requests.Session()
     r = scraper.get(URL, impersonate="chrome120", verify=False, timeout=60)
     sub_maps = re.findall(r'(?i)<loc>(.*?)</loc>', r.text)
@@ -43,20 +43,23 @@ def main():
     for sub_url in sub_maps:
         sub_url = sub_url.strip()
         if any(x in sub_url.lower() for x in ['products', 'categories', 'news', 'info']):
-            print(f"Качаю: {sub_url}")
+            print(f"Обработка: {sub_url}")
             res = scraper.get(sub_url, impersonate="chrome120", verify=False, timeout=90)
             if res.status_code == 200:
-                cleaned = clean_xml_content(res.text)
+                # Очищаем контент каждой под-карты
+                cleaned = super_clean_xml(res.text)
                 urls = re.findall(r'(?i)<url\b[^>]*>.*?</url>', cleaned, re.DOTALL)
                 all_urls.extend(urls)
 
+    # Сохраняем результат
     for i in range(0, len(all_urls), LIMIT):
         chunk = all_urls[i:i + LIMIT]
         part = (i // LIMIT) + 1
         header = '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">'
-        with open(f"sitemap_part{part}.xml", "w", encoding="utf-8") as f:
+        filename = f"sitemap_part{part}.xml"
+        with open(filename, "w", encoding="utf-8") as f:
             f.write(header + "\n" + "\n".join(chunk) + "\n</urlset>")
-        print(f"Создан файл: sitemap_part{part}.xml")
+        print(f"Создан чистый файл: {filename}")
 
 if __name__ == "__main__":
     main()
