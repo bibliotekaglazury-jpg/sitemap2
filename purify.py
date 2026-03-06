@@ -1,61 +1,69 @@
 import cloudscraper
 import re
 import os
+import urllib3
 
-# Твоя техническая ссылка (прямой доступ к базе без Cloudflare)
-TECH_URL = "https://sklep621938.shoparena.pl/console/integration/execute/name/GoogleSitemap"
+# Отключаем предупреждения о небезопасном соединении (чтобы не спамить в логи)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# Твои адреса (пробуем по очереди)
+URLS_TO_TRY = [
+    "https://sklep621938.shoparena.pl/console/integration/execute/name/GoogleSitemap",
+    "http://sklep621938.shoparena.pl/console/integration/execute/name/GoogleSitemap"
+]
 LIMIT = 45000
 
 def main():
-    print(f"--- ЗАПУСК ЧЕРЕЗ ТЕХНИЧЕСКИЙ КАНАЛ ---")
+    print(f"--- ЗАПУСК: ОБХОД SSL И CLOUDFLARE ---")
     
-    # Используем cloudscraper на случай, если даже там есть базовая защита
+    # Создаем скрапер, который игнорирует ошибки SSL (verify=False)
     scraper = cloudscraper.create_scraper()
     
-    try:
-        print(f"Запрашиваю: {TECH_URL}")
-        r = scraper.get(TECH_URL, timeout=60)
-        
-        print(f"Статус ответа: {r.status_code}")
-        
-        if r.status_code != 200:
-            print(f"Ошибка! Сервер ответил: {r.status_code}")
-            return
+    content_index = ""
+    for url in URLS_TO_TRY:
+        try:
+            print(f"Попытка соединения с: {url}")
+            # verify=False — это ключ к успеху, игнорируем старые протоколы Shoper
+            r = scraper.get(url, timeout=60, verify=False)
+            
+            if r.status_code == 200 and "<loc>" in r.text.lower():
+                content_index = r.text
+                print("УСПЕХ! Данные получены.")
+                break
+            else:
+                print(f"Статус: {r.status_code}. XML не найден.")
+        except Exception as e:
+            print(f"Ошибка на этом адресе: {e}")
 
-        # Ищем все под-карты <loc>
-        sub_maps = re.findall(r'(?i)<loc>(.*?)</loc>', r.text)
-        print(f"Найдено под-карт в индексе: {len(sub_maps)}")
+    if not content_index:
+        print("КРИТИЧЕСКАЯ ОШИБКА: Не удалось достучаться до Shoper даже без SSL.")
+        return
 
-        all_urls = []
-        for url in sub_maps:
-            url = url.strip()
-            # Берем только товары и категории
-            if any(x in url.lower() for x in ['products', 'categories', 'news', 'info']):
-                print(f"Качаю данные из: {url}")
-                # Если под-карта ведет на основной домен, пробуем достучаться
-                res = scraper.get(url, timeout=60)
+    # Парсим под-карты
+    sub_maps = re.findall(r'(?i)<loc>(.*?)</loc>', content_index)
+    all_urls = []
+
+    for sub_url in sub_maps:
+        sub_url = sub_url.strip()
+        if any(x in sub_url.lower() for x in ['products', 'categories', 'news', 'info']):
+            print(f"Качаем: {sub_url}")
+            try:
+                # Везде добавляем verify=False
+                res = scraper.get(sub_url, timeout=60, verify=False)
                 
-                # Если основной домен блокирует под-карты, меняем его на технический на лету
+                # Если под-карта на основном домене не открывается, пробуем тех-адрес
                 if res.status_code != 200:
-                    tech_sub_url = url.replace("www.iglazura24.pl", "sklep621938.shoparena.pl")
-                    print(f"  Доступ к основному закрыт, пробую тех-адрес: {tech_sub_url}")
-                    res = scraper.get(tech_sub_url, timeout=60)
+                    tech_sub = sub_url.replace("www.iglazura24.pl", "sklep621938.shoparena.pl")
+                    res = scraper.get(tech_sub, timeout=60, verify=False)
 
-                # Вырезаем лишние теги Shoper (name, parentid, productscount)
                 content = re.sub(r'(?i)<(name|parentid|productscount)>.*?</\1>', '', res.text)
-                
-                # Вытаскиваем все блоки <url>...</url>
                 urls = re.findall(r'(?i)<url>.*?</url>', content, re.DOTALL)
                 all_urls.extend(urls)
-                print(f"  + получено ссылок: {len(urls)}")
+                print(f"  + получено: {len(urls)}")
+            except:
+                print(f"  ! ошибка загрузки {sub_url}")
 
-        print(f"--- ИТОГО СОБРАНО: {len(all_urls)} ---")
-
-        if not all_urls:
-            print("Список пуст. Файлы не созданы.")
-            return
-
-        # Разбиваем на файлы по 45 000 ссылок
+    if all_urls:
         for i in range(0, len(all_urls), LIMIT):
             chunk = all_urls[i:i + LIMIT]
             part = (i // LIMIT) + 1
@@ -63,10 +71,9 @@ def main():
             filename = f"sitemap_part{part}.xml"
             with open(filename, "w", encoding="utf-8") as f:
                 f.write(header + "\n" + "\n".join(chunk) + "\n</urlset>")
-            print(f"УСПЕХ: Создан файл {filename}")
-
-    except Exception as e:
-        print(f"ОШИБКА: {e}")
+            print(f"ГОТОВО: {filename}")
+    else:
+        print("Список ссылок пуст.")
 
 if __name__ == "__main__":
     main()
