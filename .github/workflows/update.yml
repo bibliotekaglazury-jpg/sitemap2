@@ -1,0 +1,29 @@
+name: Auto Update Sitemap
+on:
+  schedule:
+    - cron: '0 2 * * *' # Запуск каждый день в 2 часа ночи
+  workflow_dispatch: # Позволяет запустить вручную кнопкой
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      - name: Install requests
+        run: pip install requests
+      - name: Run script
+        run: python purify.py
+      - name: Push changes
+        run: |
+          git config --global user.name 'SitemapBot'
+          git config --global user.email 'bot@github.com'
+          git add sitemap_part*.xml
+          git commit -m "Shoper Sitemap Cleaned" || exit 0
+          git push
