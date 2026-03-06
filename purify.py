@@ -3,62 +3,65 @@ import re
 import html
 import time
 
-# ИСПОЛЬЗУЕМ ТЕХНИЧЕСКИЙ АДРЕС, ЧТОБЫ МЕНЬШЕ БЕСИТЬ ШОППЕР
-URL = "https://sklep621938.shoparena.pl/console/integration/execute/name/GoogleSitemap"
+# Используем основной домен, так как curl_cffi его пробивает
+URL = "https://www.iglazura24.pl/console/integration/execute/name/GoogleSitemap"
 LIMIT = 45000
 
-def clean_xml(text):
-    text = re.sub(r'(?i)<(name|parentid|productscount)>.*?</\1>', '', text)
-    text = html.unescape(html.unescape(text))
-    text = text.replace('&middot;', '·').replace('&nbsp;', ' ')
-    text = text.replace('&', '&amp;').replace('&amp;amp;', '&amp;')
-    text = "".join(ch for ch in text if ord(ch) >= 32 or ch in "\n\r\t")
-    return text
+def clean_block(block):
+    # 1. Удаляем запрещенные теги Shoper (name, parentid и т.д.)
+    block = re.sub(r'(?i)<(name|parentid|productscount)>.*?</\1>', '', block)
+    
+    # 2. Лечим middot и другие HTML-сущности
+    # Сначала превращаем &middot; в реальный символ ·
+    block = html.unescape(block)
+    
+    # 3. XML-безопасность: заменяем & на &amp; (но только если это не часть другого тега)
+    # Это предотвращает поломку XML амперсандами в URL
+    block = block.replace('&', '&amp;').replace('&amp;amp;', '&amp;')
+    
+    # 4. Удаляем любые невидимые символы, которые бесят парсеры
+    block = "".join(ch for ch in block if ord(ch) >= 32 or ch in "\n\r\t")
+    return block
 
 def main():
-    print("--- ЗАПУСК СТЕРИЛИЗАЦИИ XML V2 ---")
+    print("--- ЗАПУСК ХИРУРГИЧЕСКОЙ ОЧИСТКИ XML ---")
     scraper = requests.Session()
     
     try:
-        print(f"Запрашиваю индекс: {URL}")
         r = scraper.get(URL, impersonate="chrome120", verify=False, timeout=60)
-        print(f"Статус индекса: {r.status_code}")
-        
         sub_maps = re.findall(r'(?i)<loc>(.*?)</loc>', r.text)
         print(f"Найдено под-карт: {len(sub_maps)}")
-
-        if not sub_maps:
-            print("ОШИБКА: Список под-карт пуст. Шоппер выдал пустую страницу.")
-            print(f"Начало ответа: {r.text[:500]}")
-            return
 
         all_urls = []
         for index, sub_url in enumerate(sub_maps):
             sub_url = sub_url.strip()
             if any(x in sub_url.lower() for x in ['products', 'categories', 'news', 'info']):
-                print(f"[{index+1}/{len(sub_maps)}] Качаю: {sub_url}")
+                print(f"[{index+1}/{len(sub_maps)}] Обработка: {sub_url}")
                 res = scraper.get(sub_url, impersonate="chrome120", verify=False, timeout=90)
+                
                 if res.status_code == 200:
-                    cleaned = clean_xml(res.text)
-                    urls = re.findall(r'(?i)<url\b[^>]*>.*?</url>', cleaned, re.DOTALL)
-                    all_urls.extend(urls)
-                    print(f"  + {len(urls)} ссылок")
-                time.sleep(1) # Небольшая пауза, чтобы не злить сервер
+                    # Ищем все блоки <url>...</url>
+                    raw_urls = re.findall(r'(?i)<url>.*?</url>', res.text, re.DOTALL)
+                    for block in raw_urls:
+                        all_urls.append(clean_block(block))
+                    print(f"  + успешно извлечено: {len(raw_urls)} ссылок")
+                time.sleep(0.5)
 
-        print(f"\nИТОГО СОБРАНО: {len(all_urls)}")
+        print(f"\n--- ИТОГО СОБРАНО: {len(all_urls)} ссылок ---")
 
-        if all_urls:
-            for i in range(0, len(all_urls), LIMIT):
-                chunk = all_urls[i:i + LIMIT]
-                part = (i // LIMIT) + 1
-                header = '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">'
-                # МЕНЯЕМ ИМЯ ФАЙЛА ДЛЯ УБИЙСТВА КЭША
-                filename = f"sitemap_new_part{part}.xml"
-                with open(filename, "w", encoding="utf-8") as f:
-                    f.write(header + "\n" + "\n".join(chunk) + "\n</urlset>")
-                print(f"СОЗДАН НОВЫЙ ФАЙЛ: {filename}")
-        else:
-            print("ОШИБКА: Ссылки не собраны.")
+        if not all_urls:
+            print("ОШИБКА: Ссылки не найдены! Проверь ответ сервера.")
+            return
+
+        # Сохраняем в файлы с НОВЫМ ИМЕНЕМ для обхода кэша
+        for i in range(0, len(all_urls), LIMIT):
+            chunk = all_urls[i:i + LIMIT]
+            part = (i // LIMIT) + 1
+            header = '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">'
+            filename = f"sitemap_new_part{part}.xml"
+            with open(filename, "w", encoding="utf-8") as f:
+                f.write(header + "\n" + "\n".join(chunk) + "\n</urlset>")
+            print(f"СОЗДАН ФАЙЛ: {filename}")
 
     except Exception as e:
         print(f"КРИТИЧЕСКИЙ СБОЙ: {e}")
