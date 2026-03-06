@@ -1,8 +1,8 @@
 name: Auto Update Sitemap
 on:
   schedule:
-    - cron: '0 2 * * *' # Запуск каждый день в 2 часа ночи
-  workflow_dispatch: # Кнопка ручного запуска
+    - cron: '0 2 * * *'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -12,29 +12,23 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
-
       - name: Install dependencies
         run: pip install requests curl_cffi
-
       - name: Run script
         run: python purify.py
-
-      - name: Commit and Push changes
+      - name: Commit and Push
         run: |
           git config --global user.name 'SitemapBot'
           git config --global user.email 'bot@github.com'
-          
-          # Проверяем наличие НОВЫХ файлов (с приставкой _new_)
-          if ls sitemap_new_part*.xml 1> /dev/null 2>&1; then
-            git add sitemap_new_part*.xml
-            git commit -m "Auto-update sitemap $(date)" || echo "No changes to commit"
+          if ls sitemap_final_v1_part*.xml 1> /dev/null 2>&1; then
+            git add sitemap_final_v1_part*.xml
+            git commit -m "Final XML Fix" || echo "No changes"
             git push origin main
           else
-            echo "Критическая ошибка: скрипт не создал файлы sitemap_new_part*.xml"
+            echo "Error: Files not found"
             exit 1
           fi
