@@ -18,8 +18,8 @@ jobs:
         with:
           python-version: '3.9'
 
-      - name: Install dependencies
-        run: pip install requests cloudscraper
+      - - name: Install dependencies
+        run: pip install requests curl_cffi
 
       - name: Run script
         run: python purify.py
