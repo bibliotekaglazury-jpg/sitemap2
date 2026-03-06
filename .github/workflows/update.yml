@@ -29,12 +29,12 @@ jobs:
           git config --global user.name 'SitemapBot'
           git config --global user.email 'bot@github.com'
           
-          # Проверяем, создались ли файлы
-          if ls sitemap_part*.xml 1> /dev/null 2>&1; then
-            git add sitemap_part*.xml
+          # Проверяем наличие НОВЫХ файлов (с приставкой _new_)
+          if ls sitemap_new_part*.xml 1> /dev/null 2>&1; then
+            git add sitemap_new_part*.xml
             git commit -m "Auto-update sitemap $(date)" || echo "No changes to commit"
             git push origin main
           else
-            echo "Критическая ошибка: скрипт не создал файлы sitemap_part*.xml"
+            echo "Критическая ошибка: скрипт не создал файлы sitemap_new_part*.xml"
             exit 1
           fi
