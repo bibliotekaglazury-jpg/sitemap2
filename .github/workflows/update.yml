@@ -2,7 +2,7 @@ name: Auto Update Sitemap
 on:
   schedule:
     - cron: '0 2 * * *' # Запуск каждый день в 2 часа ночи
-  workflow_dispatch: # Позволяет запустить вручную кнопкой
+  workflow_dispatch: # Кнопка ручного запуска
 
 permissions:
   contents: write
@@ -12,18 +12,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
+
       - name: Install requests
         run: pip install requests
+
       - name: Run script
         run: python purify.py
-      - name: Push changes
+
+      - name: Commit and Push changes
         run: |
           git config --global user.name 'SitemapBot'
           git config --global user.email 'bot@github.com'
-          git add sitemap_part*.xml
-          git commit -m "Shoper Sitemap Cleaned" || exit 0
-          git push
+          
+          # Проверяем, создались ли файлы
+          if ls sitemap_part*.xml 1> /dev/null 2>&1; then
+            git add sitemap_part*.xml
+            git commit -m "Auto-update sitemap $(date)" || echo "No changes to commit"
+            git push origin main
+          else
+            echo "Критическая ошибка: скрипт не создал файлы sitemap_part*.xml"
+            exit 1
+          fi
