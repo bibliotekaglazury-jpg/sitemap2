@@ -39,7 +39,7 @@ def main():
             chunk = all_urls[i:i + LIMIT]
             part = (i // LIMIT) + 1
             header = '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">'
-            filename = f"sitemap_v3_part{part}.xml" 
+            filename = f"sitemap_v4_part{part}.xml" 
             with open(filename, "w", encoding="utf-8") as f:
                 f.write(header + "\n" + "\n".join(chunk) + "\n</urlset>")
             print(f"Created: {filename}")
