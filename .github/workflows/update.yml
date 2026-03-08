@@ -30,11 +30,11 @@ jobs:
           git config --global user.email 'bot@github.com'
           
           # ИЩЕМ ФАЙЛЫ V4 (которые только что создал Питон)
-          if ls sitemap_v5_part*.xml 1> /dev/null 2>&1; then
-            git add sitemap_v5_part*.xml
+          if ls sitemap_v6_part*.xml 1> /dev/null 2>&1; then
+            git add sitemap_v6_part*.xml
             git commit -m "Update sitemap v4" || echo "No changes to commit"
             git push origin main
           else
-            echo "Критическая ошибка: файлы sitemap_v5_part*.xml не найдены!"
+            echo "Критическая ошибка: файлы sitemap_v6_part*.xml не найдены!"
             exit 1
           fi
