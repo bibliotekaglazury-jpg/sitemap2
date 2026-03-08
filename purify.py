@@ -1,28 +1,29 @@
-from curl_cffi import requests
+import requests
 import re
 import html
 import time
 import sys
+import os # Добавили os для создания каталогов
 
 # Используем технический адрес для получения данных без Cloudflare
 URL = "https://sklep621938.shoparena.pl/console/integration/execute/name/GoogleSitemap"
 LIMIT = 45000
-# !!! КЛЮЧЕВОЕ СТРОГОЕ СЛОВО ДЛЯ ФИЛЬТРАЦИИ !!!
-# Будут пропускаться только URL, которые НАЧИНАЮТСЯ с этого домена
-TARGET_DOMAIN_FILTER = "https://www.iglazura24.pl" 
-# Заменяем основной домен на технический для запросов к Shoper
-SHOPARENA_TECHNICAL_DOMAIN = "sklep621938.shoparena.pl" 
+
+# !!! КЛЮЧЕВЫЕ НАСТРОЙКИ ДЛЯ НОВОЙ СТРУКТУРЫ И ФИЛЬТРАЦИИ !!!
+CLIENT_SLUG = "iglazura24" # Уникальный идентификатор клиента (для SaaS)
+SITEMAP_VERSION = "v6"     # Текущая версия
+
+TARGET_DOMAIN_FILTER = f"https://www.{CLIENT_SLUG}.pl" # Домен для строгой фильтрации
+SHOPARENA_TECHNICAL_DOMAIN = "sklep621938.shoparena.pl" # Технический домен Shoper
+
+# Путь, куда будут сохраняться файлы на GitHub Actions
+OUTPUT_DIR = f"client_sitemaps/{CLIENT_SLUG}/{SITEMAP_VERSION}"
 
 
 def hard_clean(text):
-    # 1. Вырезаем мусор Shoper (name, parentid, productscount)
     text = re.sub(r'(?i)<(name|parentid|productscount)>.*?</\1>', '', text)
-    # 2. Декодируем HTML сущности (превращаем &middot; в ·, &nbsp; в пробел)
     text = html.unescape(text)
-    # 3. Фикс для амперсанда (единственный разрешенный символ на &)
-    # Сначала все & превращаем в &amp;, затем исправляем двойное кодирование
     text = text.replace('&', '&amp;').replace('&amp;amp;', '&amp;')
-    # 4. Очистка от невидимых символов
     return "".join(ch for ch in text if ord(ch) >= 32 or ch in "\n\r\t")
 
 def main():
@@ -37,18 +38,16 @@ def main():
         sub_maps = re.findall(r'(?i)<loc>(.*?)</loc>', r.text)
         print(f"📂 Найдено под-карт в индексе Shoper: {len(sub_maps)}")
         
-        all_urls_for_sitemap = [] # Здесь будут только отфильтрованные URL
+        all_urls_for_sitemap = [] 
         initial_urls_count = 0
         
         for sub_url in sub_maps:
             sub_url = sub_url.strip()
             
-            # --- Важный шаг: Заменяем ДОМЕНЫ в URL на технический для скачивания ---
-            # Это гарантирует, что мы всегда стучимся в shoparena.pl, даже если loc-ссылка от Shoper на www.iglazura24.de
-            fetch_url = sub_url.replace("https://www.iglazura24.pl", f"https://{SHOPARENA_TECHNICAL_DOMAIN}")
-            fetch_url = fetch_url.replace("https://www.iglazura24.de", f"https://{SHOPARENA_TECHNICAL_DOMAIN}")
-            fetch_url = fetch_url.replace("http://www.iglazura24.pl", f"https://{SHOPARENA_TECHNICAL_DOMAIN}")
-            fetch_url = fetch_url.replace("http://www.iglazura24.de", f"https://{SHOPARENA_TECHNICAL_DOMAIN}")
+            fetch_url = sub_url.replace(f"https://www.{CLIENT_SLUG}.pl", f"https://{SHOPARENA_TECHNICAL_DOMAIN}")
+            fetch_url = fetch_url.replace(f"https://www.{CLIENT_SLUG}.de", f"https://{SHOPARENA_TECHNICAL_DOMAIN}") # Заменяем DE на тех. домен
+            fetch_url = fetch_url.replace(f"http://www.{CLIENT_SLUG}.pl", f"https://{SHOPARENA_TECHNICAL_DOMAIN}")
+            fetch_url = fetch_url.replace(f"http://www.{CLIENT_SLUG}.de", f"https://{SHOPARENA_TECHNICAL_DOMAIN}")
             
 
             if any(x in fetch_url.lower() for x in ['products', 'categories', 'news', 'info']):
@@ -59,27 +58,25 @@ def main():
                     cleaned_content = hard_clean(res.text)
                     raw_urls_blocks = re.findall(r'(?i)<url>.*?</url>', cleaned_content, re.DOTALL)
                     
-                    initial_urls_count += len(raw_urls_blocks) # Считаем все URL до фильтрации
+                    initial_urls_count += len(raw_urls_blocks)
                     filtered_out_count = 0
 
                     for url_block in raw_urls_blocks:
                         loc_match = re.search(r'<loc>(.*?)</loc>', url_block)
                         if loc_match:
                             original_loc_url = loc_match.group(1)
-                            # !!! КЛЮЧЕВАЯ СТРОГАЯ ФИЛЬТРАЦИЯ: пропускаем только URL польского домена !!!
-                            if original_loc_url.startswith(TARGET_DOMAIN_FILTER): # Используем startswith для строгой проверки
+                            if original_loc_url.startswith(TARGET_DOMAIN_FILTER):
                                 all_urls_for_sitemap.append(url_block)
                             else:
                                 filtered_out_count += 1
                         else:
-                            # Если loc-тег не найден, и блок не начинается с целевого домена, фильтруем
                             if not url_block.startswith(TARGET_DOMAIN_FILTER):
                                 filtered_out_count += 1
                     
                     print(f"✅ Добавлено: {len(all_urls_for_sitemap) - (initial_urls_count - len(raw_urls_blocks))} ссылок (отфильтровано в этой под-карте: {filtered_out_count})")
                 else:
                     print(f"⛔ Сбой при загрузке под-карты: {res.status_code} для {fetch_url}")
-            time.sleep(0.5) # Небольшая пауза
+            time.sleep(0.5)
 
         print(f"\n📊 ИТОГО ДО ФИЛЬТРАЦИИ: {initial_urls_count} ссылок.")
         print(f"📊 ИТОГО ОТФИЛЬТРОВАНО (не '{TARGET_DOMAIN_FILTER}'): {initial_urls_count - len(all_urls_for_sitemap)} ссылок.")
@@ -87,14 +84,17 @@ def main():
 
         if not all_urls_for_sitemap:
             print("⚠️ ВНИМАНИЕ: После фильтрации не осталось ссылок. Проверьте TARGET_DOMAIN_FILTER.")
-            sys.exit(1) # Выходим с ошибкой, если ссылок нет
+            sys.exit(1)
 
-        # СОХРАНЯЕМ В НОВЫЕ ФАЙЛЫ V6
+        # --- Создаем директории, если их нет ---
+        os.makedirs(OUTPUT_DIR, exist_ok=True)
+
+        # СОХРАНЯЕМ В НОВЫЕ ФАЙЛЫ V6 В НОВОЙ СТРУКТУРЕ
         for i in range(0, len(all_urls_for_sitemap), LIMIT):
             chunk = all_urls_for_sitemap[i:i + LIMIT]
             part = (i // LIMIT) + 1
             header = '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">'
-            filename = f"sitemap_v6_part{part}.xml" 
+            filename = os.path.join(OUTPUT_DIR, f"sitemap_part{part}.xml") # Новый путь и имя файла
             with open(filename, "w", encoding="utf-8") as f:
                 f.write(header + "\n" + "\n".join(chunk) + "\n</urlset>")
             print(f"💾 СОЗДАН ФАЙЛ: {filename} с {len(chunk)} ссылками.")
