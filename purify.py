@@ -2,7 +2,7 @@ import re, html, time, sys, os
 from curl_cffi import requests as cffi_requests 
 
 URL = "https://sklep621938.shoparena.pl/console/integration/execute/name/GoogleSitemap"
-LIMIT = 30000 
+LIMIT = 45000 
 TARGET_DOMAIN = "https://www.iglazura24.pl"
 
 def hard_clean(text):
@@ -13,6 +13,7 @@ def hard_clean(text):
 
 def main():
     scraper = cffi_requests.Session()
+    print("🚀 Запуск очистки...")
     r = scraper.get(URL, impersonate="chrome120", verify=False)
     sub_maps = re.findall(r'(?i)<loc>(.*?)</loc>', r.text)
     all_urls = []
@@ -26,13 +27,15 @@ def main():
                 blocks = re.findall(r'(?i)<url\b[^>]*>.*?</url>', cleaned, re.DOTALL)
                 for b in blocks:
                     if TARGET_DOMAIN in b: all_urls.append(b)
+                print(f"  + получено ссылок из {fetch_url.split('/')[-1]}")
 
+    print(f"📊 Итого: {len(all_urls)} ссылок")
     for i in range(0, len(all_urls), LIMIT):
         part = (i // LIMIT) + 1
         header = '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">'
         filename = f"sitemap_part{part}.xml"
         with open(filename, "w", encoding="utf-8") as f:
             f.write(header + "".join(all_urls[i:i + LIMIT]) + "</urlset>")
-        print(f"Created: {filename}")
+        print(f"✅ Создан: {filename}")
 
 if __name__ == "__main__": main()
