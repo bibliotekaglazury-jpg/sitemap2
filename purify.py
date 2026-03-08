@@ -1,9 +1,11 @@
-import requests
 import re
 import html
 import time
 import sys
-import os # Добавили os для создания каталогов
+import os
+
+# !!! ИМПОРТИРУЕМ curl_cffi.requests КАК cffi_requests !!!
+from curl_cffi import requests as cffi_requests 
 
 # Используем технический адрес для получения данных без Cloudflare
 URL = "https://sklep621938.shoparena.pl/console/integration/execute/name/GoogleSitemap"
@@ -27,7 +29,8 @@ def hard_clean(text):
     return "".join(ch for ch in text if ord(ch) >= 32 or ch in "\n\r\t")
 
 def main():
-    scraper = requests.Session()
+    # !!! ИСПОЛЬЗУЕМ cffi_requests.Session() !!!
+    scraper = cffi_requests.Session()
     print(f"🚀 Запуск очистки XML для '{TARGET_DOMAIN_FILTER}' через '{URL}'")
     try:
         r = scraper.get(URL, impersonate="chrome120", verify=False, timeout=60)
@@ -45,7 +48,7 @@ def main():
             sub_url = sub_url.strip()
             
             fetch_url = sub_url.replace(f"https://www.{CLIENT_SLUG}.pl", f"https://{SHOPARENA_TECHNICAL_DOMAIN}")
-            fetch_url = fetch_url.replace(f"https://www.{CLIENT_SLUG}.de", f"https://{SHOPARENA_TECHNICAL_DOMAIN}") # Заменяем DE на тех. домен
+            fetch_url = fetch_url.replace(f"https://www.{CLIENT_SLUG}.de", f"https://{SHOPARENA_TECHNICAL_DOMAIN}")
             fetch_url = fetch_url.replace(f"http://www.{CLIENT_SLUG}.pl", f"https://{SHOPARENA_TECHNICAL_DOMAIN}")
             fetch_url = fetch_url.replace(f"http://www.{CLIENT_SLUG}.de", f"https://{SHOPARENA_TECHNICAL_DOMAIN}")
             
@@ -86,15 +89,13 @@ def main():
             print("⚠️ ВНИМАНИЕ: После фильтрации не осталось ссылок. Проверьте TARGET_DOMAIN_FILTER.")
             sys.exit(1)
 
-        # --- Создаем директории, если их нет ---
         os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-        # СОХРАНЯЕМ В НОВЫЕ ФАЙЛЫ V6 В НОВОЙ СТРУКТУРЕ
         for i in range(0, len(all_urls_for_sitemap), LIMIT):
             chunk = all_urls_for_sitemap[i:i + LIMIT]
             part = (i // LIMIT) + 1
             header = '<?xml version="1.0" encoding="UTF-8"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">'
-            filename = os.path.join(OUTPUT_DIR, f"sitemap_part{part}.xml") # Новый путь и имя файла
+            filename = os.path.join(OUTPUT_DIR, f"sitemap_part{part}.xml")
             with open(filename, "w", encoding="utf-8") as f:
                 f.write(header + "\n" + "\n".join(chunk) + "\n</urlset>")
             print(f"💾 СОЗДАН ФАЙЛ: {filename} с {len(chunk)} ссылками.")
