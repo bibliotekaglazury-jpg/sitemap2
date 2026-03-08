@@ -1,8 +1,8 @@
 name: Auto Update Sitemap
 on:
   schedule:
-    - cron: '0 2 * * *'
-  workflow_dispatch:
+    - cron: '0 2 * * *' # Запуск каждый день в 2 часа ночи
+  workflow_dispatch: # Кнопка ручного запуска
 
 permissions:
   contents: write
@@ -29,12 +29,14 @@ jobs:
           git config --global user.name 'SitemapBot'
           git config --global user.email 'bot@github.com'
           
-          # ИЩЕМ ФАЙЛЫ V4 (которые только что создал Питон)
-          if ls sitemap_v6_part*.xml 1> /dev/null 2>&1; then
-            git add sitemap_v6_part*.xml
-            git commit -m "Update sitemap v4" || echo "No changes to commit"
+          # !!! ИЩЕМ ФАЙЛЫ В НОВОЙ СТРУКТУРЕ !!!
+          OUTPUT_DIR="client_sitemaps/iglazura24/v6"
+          
+          if ls ${OUTPUT_DIR}/sitemap_part*.xml 1> /dev/null 2>&1; then
+            git add ${OUTPUT_DIR}/sitemap_part*.xml
+            git commit -m "Update sitemap v6 with new structure" || echo "No changes to commit"
             git push origin main
           else
-            echo "Критическая ошибка: файлы sitemap_v6_part*.xml не найдены!"
+            echo "Критическая ошибка: файлы sitemap_part*.xml не найдены в ${OUTPUT_DIR}!"
             exit 1
           fi
