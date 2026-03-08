@@ -1,10 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <sitemap><loc>https://www.iglazura24.pl/map_v8_1.xml</loc></sitemap>
-  <sitemap><loc>https://www.iglazura24.pl/map_v8_2.xml</loc></sitemap>
-  <sitemap><loc>https://www.iglazura24.pl/map_v8_3.xml</loc></sitemap>
-  <sitemap><loc>https://www.iglazura24.pl/map_v8_4.xml</loc></sitemap>
-  <sitemap><loc>https://www.iglazura24.pl/map_v8_5.xml</loc></sitemap>
-  <sitemap><loc>https://www.iglazura24.pl/map_v8_6.xml</loc></sitemap>
-  <sitemap><loc>https://www.iglazura24.pl/map_v8_7.xml</loc></sitemap>
+  <sitemap><loc>https://www.iglazura24.pl/sitemap_part1.xml</loc></sitemap>
+  <sitemap><loc>https://www.iglazura24.pl/sitemap_part2.xml</loc></sitemap>
 </sitemapindex>
