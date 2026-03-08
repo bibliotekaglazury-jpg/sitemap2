@@ -1,8 +1,8 @@
 name: Auto Update Sitemap
 on:
   schedule:
-    - cron: '0 2 * * *' # Каждую ночь в 2:00
-  workflow_dispatch: # Кнопка ручного запуска
+    - cron: '0 2 * * *'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -29,11 +29,12 @@ jobs:
           git config --global user.name 'SitemapBot'
           git config --global user.email 'bot@github.com'
           
-          # Просто ищем все файлы sitemap_part в корне
+          # Проверяем, что Python создал файлы sitemap_part*.xml
           if ls sitemap_part*.xml 1> /dev/null 2>&1; then
             git add sitemap_part*.xml
-            git commit -m "Sitemap Auto-Update $(date)" || echo "No changes to commit"
+            git commit -m "Auto-update sitemaps $(date)" || echo "No changes to commit"
             git push origin main
           else
-            echo "Критическая ошибка: файлы sitemap_part*.xml не найдены!"
+            echo "Error: sitemap_part files not found!"
             exit 1
+          fi
